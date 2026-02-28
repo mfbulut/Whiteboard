@@ -38,7 +38,6 @@ waveout_init :: proc(state: rawptr, allocator: runtime.Allocator) {
 	assert(state != nil)
 	s = (^Waveout_State)(state)
 	s.allocator = allocator
-	log.debug("Init audio backend waveout")
 
 	// Added constant missing in bindings:
 	// KSDATAFORMAT_SUBTYPE_IEEE_FLOAT GUID: 00000003-0000-0010-8000-00aa00389b71

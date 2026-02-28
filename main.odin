@@ -1,7 +1,7 @@
 package main
 
-import "core:fmt"
 import "core:math/linalg"
+
 import k2 "karl2d"
 
 Vec2 :: [2]f64
@@ -37,10 +37,11 @@ main :: proc() {
             }
         }
 
-        if k2.key_went_down(.C) {
+        if k2.key_went_down(.R) {
             for line in lines do delete(line.points)
             clear(&lines)
             camera = Camera{zoom = 0.000001}
+            brush_radius = 4
         }
 
         k2.clear(BACKGROUND_COLOR)
@@ -50,11 +51,10 @@ main :: proc() {
         view_min := screen_to_world({0, 0}, camera)
         view_max := screen_to_world(screen_size, camera)
         
-        i:= 0;
         for line in lines {
             thickness := line.radius * camera.zoom
             
-            if  line.aabb_max.x + thickness < view_min.x ||
+            if line.aabb_max.x + thickness < view_min.x ||
                 line.aabb_min.x - thickness > view_max.x ||
                 line.aabb_max.y + thickness < view_min.y ||
                 line.aabb_min.y - thickness > view_max.y {
@@ -64,10 +64,8 @@ main :: proc() {
             segments := clamp(int(line.radius * camera.zoom * 2), 4, 32)
             smoothed := smooth_path(line.points[:], segments / 4, context.temp_allocator)
             k2.draw_path(smoothed, f32(thickness), line.color, segments)
-            i+=1
-        }
 
-        fmt.println(i)
+        }
         
         mouse_pos := k2.get_mouse_position()
         if k2.mouse_button_is_held(.Right) {
@@ -75,7 +73,6 @@ main :: proc() {
         } else {
             k2.draw_circle_outline(mouse_pos, f32(brush_radius), 2, brush_color, 64)
         }
-        
 
         k2.present()
     }
@@ -173,8 +170,4 @@ smooth_path :: proc(points: []Vec2, subdivisions := 16, allocator := context.all
 
     result[idx] = world_to_screen(points[n - 1], camera)
     return result
-}
-
-to_64 :: proc(v: k2.Vec2) -> Vec2 {
-    return {f64(v.x), f64(v.y)}
 }
