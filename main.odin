@@ -30,6 +30,7 @@ main :: proc() {
         update_camera()
         update_brush()
 
+        // Todo: Add redo
         if k2.key_went_down(.Z) {
             if len(lines) > 0 {
                 delete(lines[len(lines) - 1].points)
@@ -64,7 +65,6 @@ main :: proc() {
             segments := clamp(int(line.radius * camera.zoom * 2), 4, 32)
             smoothed := smooth_path(line.points[:], segments / 4, context.temp_allocator)
             k2.draw_path(smoothed, f32(thickness), line.color, segments)
-
         }
         
         mouse_pos := k2.get_mouse_position()
@@ -75,6 +75,7 @@ main :: proc() {
         }
 
         k2.present()
+        free_all(context.temp_allocator)
     }
 
     save_whiteboard()
@@ -93,6 +94,7 @@ update_brush :: proc() {
     update_stroke(.Right, brush_radius * 2.0 / camera.zoom, BACKGROUND_COLOR)
 }
 
+// Todo: Find a better way to draw shapes like lines, rects etc
 start_pos: Vec2
 drawing_line := false
 
@@ -108,6 +110,7 @@ update_stroke :: proc(button: k2.Mouse_Button, radius: f64, color: k2.Color) {
             aabb_min = mouse_world_pos,
             aabb_max = mouse_world_pos,
         })
+        
         append(&lines[len(lines) - 1].points, mouse_world_pos)
 
         start_pos    = mouse_world_pos

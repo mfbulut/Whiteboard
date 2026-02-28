@@ -20,6 +20,7 @@ world_to_screen :: proc(world_pos: Vec2, cam: Camera) -> k2.Vec2 {
     return k2.Vec2{f32(p.x), f32(p.y)}
 }
 
+// Todo: Smooth zoom + pan
 update_camera :: proc() {
     mouse_pos := to_64(k2.get_mouse_position())
     if !k2.key_is_held(.Left_Control) {
@@ -34,6 +35,7 @@ update_camera :: proc() {
             }
         }
     }
+    
     if k2.mouse_button_is_held(.Middle) || k2.key_is_held(.Space) {
         delta := to_64(k2.get_mouse_delta())
         if delta.x != 0 || delta.y != 0 {
