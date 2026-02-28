@@ -1,5 +1,6 @@
 package main
 
+import "core:fmt"
 import "core:math/linalg"
 import k2 "karl2d"
 
@@ -7,8 +8,8 @@ Vec2 :: [2]f64
 
 Line :: struct {
     points:   [dynamic]Vec2,
-    aabb_max: Vec2,
     aabb_min: Vec2,
+    aabb_max: Vec2,
     radius:   f64,
     color:    k2.Color,
 }
@@ -23,7 +24,6 @@ camera := Camera{zoom = 0.000001}
 main :: proc() {
     k2.init(1280, 720, "Whiteboard", {.Windowed_Resizable})
     k2.set_cursor_visible(false)
-
     load_whiteboard()
 
     for k2.update() {
@@ -49,27 +49,33 @@ main :: proc() {
         screen_size := Vec2{f64(k2.get_screen_width()), f64(k2.get_screen_height())}
         view_min := screen_to_world({0, 0}, camera)
         view_max := screen_to_world(screen_size, camera)
-
+        
+        i:= 0;
         for line in lines {
-            r := line.radius
-            if  line.aabb_max.x + r < view_min.x ||
-                line.aabb_min.x - r > view_max.x ||
-                line.aabb_max.y + r < view_min.y ||
-                line.aabb_min.y - r > view_max.y {
+            thickness := line.radius * camera.zoom
+            
+            if  line.aabb_max.x + thickness < view_min.x ||
+                line.aabb_min.x - thickness > view_max.x ||
+                line.aabb_max.y + thickness < view_min.y ||
+                line.aabb_min.y - thickness > view_max.y {
                 continue
             }
+            
             segments := clamp(int(line.radius * camera.zoom * 2), 4, 32)
             smoothed := smooth_path(line.points[:], segments / 4, context.temp_allocator)
-
-            k2.draw_path(smoothed, f32(line.radius * camera.zoom), line.color, segments)
+            k2.draw_path(smoothed, f32(thickness), line.color, segments)
+            i+=1
         }
 
+        fmt.println(i)
+        
         mouse_pos := k2.get_mouse_position()
         if k2.mouse_button_is_held(.Right) {
             k2.draw_circle_outline(mouse_pos, f32(brush_radius * 2), 2, k2.WHITE, 64)
         } else {
             k2.draw_circle_outline(mouse_pos, f32(brush_radius), 2, brush_color, 64)
         }
+        
 
         k2.present()
     }
@@ -94,8 +100,8 @@ start_pos: Vec2
 drawing_line := false
 
 update_stroke :: proc(button: k2.Mouse_Button, radius: f64, color: k2.Color) {
-    mouse_pos := k2.get_mouse_position()
-    mouse_world_pos := screen_to_world(Vec2{f64(mouse_pos.x), f64(mouse_pos.y)}, camera)
+    mouse_pos := to_64(k2.get_mouse_position())
+    mouse_world_pos := screen_to_world(mouse_pos, camera)
 
     if k2.mouse_button_went_down(button) {
         append(&lines, Line{
@@ -167,4 +173,8 @@ smooth_path :: proc(points: []Vec2, subdivisions := 16, allocator := context.all
 
     result[idx] = world_to_screen(points[n - 1], camera)
     return result
+}
+
+to_64 :: proc(v: k2.Vec2) -> Vec2 {
+    return {f64(v.x), f64(v.y)}
 }

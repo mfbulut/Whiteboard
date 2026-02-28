@@ -52,7 +52,7 @@ load_whiteboard :: proc() -> bool {
         return
     }
 
-    camera       = read(data, &pos, Camera) or_return
+    camera       = read(data, &pos, Camera)    or_return
     brush_radius = read(data, &pos, f64)       or_return
     brush_color  = read(data, &pos, k2.Color)  or_return
     num_lines   := read(data, &pos, u32)       or_return
@@ -60,15 +60,15 @@ load_whiteboard :: proc() -> bool {
     for _ in 0..<num_lines {
         color    := read(data, &pos, k2.Color) or_return
         radius   := read(data, &pos, f64)      or_return
-        aabb_min := read(data, &pos, Vec2)  or_return
-        aabb_max := read(data, &pos, Vec2)  or_return
+        aabb_min := read(data, &pos, Vec2)     or_return
+        aabb_max := read(data, &pos, Vec2)     or_return
         num_pts  := read(data, &pos, u32)      or_return
         points := make([dynamic]Vec2, 0, num_pts)
         for _ in 0..<num_pts {
             p := read(data, &pos, Vec2) or_return
             append(&points, p)
         }
-        append(&lines, Line{points, aabb_min, aabb_max, color, radius})
+        append(&lines, Line{points, aabb_min, aabb_max, radius, color})
     }
 
     return true
