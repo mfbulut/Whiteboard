@@ -1,8 +1,9 @@
 package main
-import k2 "karl2d"
+
 import "core:os"
 import "core:path/filepath"
-import "core:mem"
+
+import k2 "karl2d"
 
 get_whiteboard_path :: proc() -> string {
     docs, _ := os.user_documents_dir(context.allocator)
@@ -20,8 +21,8 @@ save_whiteboard :: proc() {
     }
 
     append_val(&buf, camera)
-    append_val(&buf, brush_color)
     append_val(&buf, brush_radius)
+    append_val(&buf, brush_color)
     append_val(&buf, u32(len(lines)))
 
     for line in lines {
@@ -51,20 +52,20 @@ load_whiteboard :: proc() -> bool {
         return
     }
 
-    camera       = read(data, &pos, k2.Camera) or_return
+    camera       = read(data, &pos, Camera) or_return
+    brush_radius = read(data, &pos, f64)       or_return
     brush_color  = read(data, &pos, k2.Color)  or_return
-    brush_radius = read(data, &pos, f32)       or_return
     num_lines   := read(data, &pos, u32)       or_return
 
     for _ in 0..<num_lines {
         color    := read(data, &pos, k2.Color) or_return
-        radius   := read(data, &pos, f32)      or_return
-        aabb_min := read(data, &pos, k2.Vec2)  or_return
-        aabb_max := read(data, &pos, k2.Vec2)  or_return
+        radius   := read(data, &pos, f64)      or_return
+        aabb_min := read(data, &pos, Vec2)  or_return
+        aabb_max := read(data, &pos, Vec2)  or_return
         num_pts  := read(data, &pos, u32)      or_return
-        points := make([dynamic]k2.Vec2, 0, num_pts)
+        points := make([dynamic]Vec2, 0, num_pts)
         for _ in 0..<num_pts {
-            p := read(data, &pos, k2.Vec2) or_return
+            p := read(data, &pos, Vec2) or_return
             append(&points, p)
         }
         append(&lines, Line{points, aabb_min, aabb_max, color, radius})
