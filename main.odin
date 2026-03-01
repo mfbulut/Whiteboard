@@ -1,25 +1,32 @@
 package main
 
+import "core:fmt"
 import "core:math/linalg"
 
 import k2 "karl2d"
 
 Vec2 :: [2]f64
 
-Line :: struct {
-    points:   [dynamic]Vec2,
-    aabb_min: Vec2,
-    aabb_max: Vec2,
-    radius:   f64,
-    color:    k2.Color,
-}
-
 BACKGROUND_COLOR :: k2.Color{22, 29, 50, 255}
 
-lines: [dynamic]Line
-brush_radius : f64 = 4
-brush_color  := k2.WHITE
-camera := Camera{zoom = 0.000001}
+ShapeType :: enum {
+	NORMAL,
+	LINE,
+	RECT,
+}
+
+Shape :: struct {
+    points:    [dynamic]Vec2,
+    aabb_min:  Vec2,
+    aabb_max:  Vec2,
+    thickness: f64,
+    color:     k2.Color,
+    type:      ShapeType
+}
+
+shapes: [dynamic]Shape
+brush_thickness : f64 = 4
+brush_color := k2.WHITE
 
 main :: proc() {
     k2.init(1280, 720, "Whiteboard", {.Windowed_Resizable})
@@ -32,17 +39,17 @@ main :: proc() {
 
         // Todo: Add redo
         if k2.key_went_down(.Z) {
-            if len(lines) > 0 {
-                delete(lines[len(lines) - 1].points)
-                pop(&lines)
+            if len(shapes) > 0 {
+                delete(shapes[len(shapes) - 1].points)
+                pop(&shapes)
             }
         }
 
         if k2.key_went_down(.R) {
-            for line in lines do delete(line.points)
-            clear(&lines)
+            for shape in shapes do delete(shape.points)
+            clear(&shapes)
             camera = Camera{zoom = 0.000001}
-            brush_radius = 4
+            brush_thickness = 4
         }
 
         k2.clear(BACKGROUND_COLOR)
@@ -52,26 +59,46 @@ main :: proc() {
         view_min := screen_to_world({0, 0}, camera)
         view_max := screen_to_world(screen_size, camera)
         
-        for line in lines {
-            thickness := line.radius * camera.zoom
-            
-            if line.aabb_max.x + thickness < view_min.x ||
-                line.aabb_min.x - thickness > view_max.x ||
-                line.aabb_max.y + thickness < view_min.y ||
-                line.aabb_min.y - thickness > view_max.y {
+        for shape in shapes {
+            if shape.aabb_max.x + shape.thickness < view_min.x ||
+                shape.aabb_min.x - shape.thickness > view_max.x ||
+                shape.aabb_max.y + shape.thickness < view_min.y ||
+                shape.aabb_min.y - shape.thickness > view_max.y {
                 continue
             }
             
-            segments := clamp(int(line.radius * camera.zoom * 2), 4, 32)
-            smoothed := smooth_path(line.points[:], segments / 4, context.temp_allocator)
-            k2.draw_path(smoothed, f32(thickness), line.color, segments)
+            thickness := shape.thickness * camera.zoom
+            
+            segments := clamp(int(shape.thickness * camera.zoom * 2), 4, 64)
+            
+            if shape.type == .NORMAL {
+                points := smooth_path(shape.points[:], segments / 4, context.temp_allocator)
+                k2.draw_path(points[:], f32(thickness), shape.color, segments)
+                fmt.println(segments)
+            } else {
+                n := len(shape.points)
+                
+                if n > 0 {
+                    prev := world_to_screen(shape.points[0], camera)
+                    k2.draw_circle(prev, f32(thickness), shape.color, segments)
+                    
+                    for i in 1..<n {
+                        next := world_to_screen(shape.points[i], camera)
+                        k2.draw_line(prev, next, f32(thickness) * 2, shape.color)
+                        k2.draw_circle(next, f32(thickness), shape.color, segments)
+                        prev = next
+                    }
+                }
+            
+            }
         }
+        
         
         mouse_pos := k2.get_mouse_position()
         if k2.mouse_button_is_held(.Right) {
-            k2.draw_circle_outline(mouse_pos, f32(brush_radius * 2), 2, k2.WHITE, 64)
+            k2.draw_circle_outline(mouse_pos, f32(brush_thickness), 2, k2.WHITE, 64)
         } else {
-            k2.draw_circle_outline(mouse_pos, f32(brush_radius), 2, brush_color, 64)
+            k2.draw_circle_outline(mouse_pos, f32(brush_thickness), 2, brush_color, 64)
         }
 
         k2.present()
@@ -87,53 +114,65 @@ update_brush :: proc() {
     if k2.key_went_down(.N3) do brush_color = k2.GREEN
     if k2.key_went_down(.N4) do brush_color = k2.BLUE
     if k2.key_is_held(.Left_Control) {
-        brush_radius = max(brush_radius + f64(k2.get_mouse_wheel_delta()), 1)
+        brush_thickness = max(brush_thickness + f64(k2.get_mouse_wheel_delta()), 1)
     }
 
-    update_stroke(.Left, brush_radius / camera.zoom, brush_color)
-    update_stroke(.Right, brush_radius * 2.0 / camera.zoom, BACKGROUND_COLOR)
+    update_stroke(.Left, brush_thickness  / camera.zoom, brush_color)
+    update_stroke(.Right, brush_thickness / camera.zoom, BACKGROUND_COLOR)
 }
 
-// Todo: Find a better way to draw shapes like lines, rects etc
-start_pos: Vec2
-drawing_line := false
-
-update_stroke :: proc(button: k2.Mouse_Button, radius: f64, color: k2.Color) {
+update_stroke :: proc(button: k2.Mouse_Button, thickness: f64, color: k2.Color) {
     mouse_pos := to_64(k2.get_mouse_position())
     mouse_world_pos := screen_to_world(mouse_pos, camera)
 
     if k2.mouse_button_went_down(button) {
-        append(&lines, Line{
-            points   = make([dynamic]Vec2, 0, 256),
-            radius   = radius,
-            color    = color,
-            aabb_min = mouse_world_pos,
-            aabb_max = mouse_world_pos,
-        })
+        shape := Shape{
+            points    = make([dynamic]Vec2, 0, 256),
+            thickness = thickness,
+            color     = color,
+            aabb_min  = mouse_world_pos,
+            aabb_max  = mouse_world_pos,
+        }
         
-        append(&lines[len(lines) - 1].points, mouse_world_pos)
-
-        start_pos    = mouse_world_pos
-        drawing_line = k2.key_is_held(.Left_Shift) || k2.key_is_held(.Right_Shift)
+        append(&shape.points, mouse_world_pos)
+        
+        if k2.key_is_held(.Left_Shift) {
+            shape.type = .LINE
+            append(&shape.points, mouse_world_pos)
+        } else if k2.key_is_held(.Left_Control) {
+            shape.type = .RECT
+            append(&shape.points, mouse_world_pos, mouse_world_pos, mouse_world_pos, mouse_world_pos)
+        }
+        
+        append(&shapes, shape)
     }
 
-    if k2.mouse_button_is_held(button) && len(lines) > 0 {
-        line := &lines[len(lines) - 1]
+    if k2.mouse_button_is_held(button) && len(shapes) > 0 {
+        shape := &shapes[len(shapes) - 1]
 
-        if drawing_line {
-            clear(&line.points)
-            append(&line.points, start_pos)
-            append(&line.points, mouse_world_pos)
-            line.aabb_min = linalg.min(start_pos, mouse_world_pos)
-            line.aabb_max = linalg.max(start_pos, mouse_world_pos)
-        } else {
-            last := line.points[len(line.points) - 1]
-            diff := (mouse_world_pos - last) * camera.zoom
-            if linalg.dot(diff, diff) < 5 do return
-
-            append(&line.points, mouse_world_pos)
-            line.aabb_min = linalg.min(line.aabb_min, mouse_world_pos)
-            line.aabb_max = linalg.max(line.aabb_max, mouse_world_pos)
+        switch shape.type {
+            case .NORMAL: {
+                last := shape.points[len(shape.points) - 1]
+                diff := (mouse_world_pos - last) * camera.zoom
+                if linalg.dot(diff, diff) < 5 do return
+    
+                append(&shape.points, mouse_world_pos)
+                shape.aabb_min = linalg.min(shape.aabb_min, mouse_world_pos)
+                shape.aabb_max = linalg.max(shape.aabb_max, mouse_world_pos)
+            }
+            case .LINE: {
+                shape.points[1] = mouse_world_pos
+                shape.aabb_min = linalg.min(shape.points[0], mouse_world_pos)
+                shape.aabb_max = linalg.max(shape.points[0], mouse_world_pos)
+            }
+            case .RECT: {
+                shape.points[1] = Vec2{mouse_world_pos.x, shape.points[0].y}
+                shape.points[2] = mouse_world_pos
+                shape.points[3] = Vec2{shape.points[0].x, mouse_world_pos.y}
+                
+                shape.aabb_min = linalg.min(shape.points[0], mouse_world_pos)
+                shape.aabb_max = linalg.max(shape.points[0], mouse_world_pos)
+            }
         }
     }
 }

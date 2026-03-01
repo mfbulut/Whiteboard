@@ -7,18 +7,7 @@ Camera :: struct {
     zoom:   f64,
 }
 
-to_64 :: proc(v: k2.Vec2) -> Vec2 {
-    return {f64(v.x), f64(v.y)}
-}
-
-screen_to_world :: proc(screen_pos: Vec2, cam: Camera) -> Vec2 {
-    return screen_pos / cam.zoom + cam.target
-}
-
-world_to_screen :: proc(world_pos: Vec2, cam: Camera) -> k2.Vec2 {
-    p := (world_pos - cam.target) * cam.zoom
-    return k2.Vec2{f32(p.x), f32(p.y)}
-}
+camera := Camera{ zoom = 0.000001 }
 
 // Todo: Smooth zoom + pan
 update_camera :: proc() {
@@ -31,7 +20,7 @@ update_camera :: proc() {
             camera.zoom = clamp(old_zoom * (1.0 + wheel * 0.1), 1e-15, 1e-3)
             camera.target += mouse_pos * (1.0 / old_zoom - 1.0 / camera.zoom)
             if k2.key_is_held(.Left_Shift) {
-                brush_radius *= camera.zoom / old_zoom
+                brush_thickness *= camera.zoom / old_zoom
             }
         }
     }
@@ -42,4 +31,17 @@ update_camera :: proc() {
             camera.target -= delta / camera.zoom
         }
     }
+}
+
+to_64 :: proc(v: k2.Vec2) -> Vec2 {
+    return {f64(v.x), f64(v.y)}
+}
+
+screen_to_world :: proc(screen_pos: Vec2, cam: Camera) -> Vec2 {
+    return screen_pos / cam.zoom + cam.target
+}
+
+world_to_screen :: proc(world_pos: Vec2, cam: Camera) -> k2.Vec2 {
+    p := (world_pos - cam.target) * cam.zoom
+    return k2.Vec2{f32(p.x), f32(p.y)}
 }

@@ -21,17 +21,18 @@ save_whiteboard :: proc() {
     }
 
     append_val(&buf, camera)
-    append_val(&buf, brush_radius)
+    append_val(&buf, brush_thickness)
     append_val(&buf, brush_color)
-    append_val(&buf, u32(len(lines)))
+    append_val(&buf, u32(len(shapes)))
 
-    for line in lines {
-        append_val(&buf, line.color)
-        append_val(&buf, line.radius)
-        append_val(&buf, line.aabb_min)
-        append_val(&buf, line.aabb_max)
-        append_val(&buf, u32(len(line.points)))
-        for p in line.points do append_val(&buf, p)
+    for shape in shapes {
+        append_val(&buf, shape.color)
+        append_val(&buf, shape.thickness)
+        append_val(&buf, shape.aabb_min)
+        append_val(&buf, shape.aabb_max)
+        append_val(&buf, shape.type)
+        append_val(&buf, u32(len(shape.points)))
+        for p in shape.points do append_val(&buf, p)
     }
 
     _ = os.write_entire_file(path, buf[:])
@@ -52,23 +53,25 @@ load_whiteboard :: proc() -> bool {
         return
     }
 
-    camera       = read(data, &pos, Camera)    or_return
-    brush_radius = read(data, &pos, f64)       or_return
-    brush_color  = read(data, &pos, k2.Color)  or_return
-    num_lines   := read(data, &pos, u32)       or_return
+    camera          = read(data, &pos, Camera)    or_return
+    brush_thickness = read(data, &pos, f64)       or_return
+    brush_color     = read(data, &pos, k2.Color)  or_return
+    num_shapes      := read(data, &pos, u32)      or_return
 
-    for _ in 0..<num_lines {
-        color    := read(data, &pos, k2.Color) or_return
-        radius   := read(data, &pos, f64)      or_return
-        aabb_min := read(data, &pos, Vec2)     or_return
-        aabb_max := read(data, &pos, Vec2)     or_return
-        num_pts  := read(data, &pos, u32)      or_return
+    for _ in 0..<num_shapes {
+        color     := read(data, &pos, k2.Color)  or_return
+        thickness := read(data, &pos, f64)       or_return
+        aabb_min  := read(data, &pos, Vec2)      or_return
+        aabb_max  := read(data, &pos, Vec2)      or_return
+        type      := read(data, &pos, ShapeType) or_return
+        num_pts   := read(data, &pos, u32)       or_return
+        
         points := make([dynamic]Vec2, 0, num_pts)
         for _ in 0..<num_pts {
             p := read(data, &pos, Vec2) or_return
             append(&points, p)
         }
-        append(&lines, Line{points, aabb_min, aabb_max, radius, color})
+        append(&shapes, Shape{points, aabb_min, aabb_max, thickness, color, type})
     }
 
     return true
