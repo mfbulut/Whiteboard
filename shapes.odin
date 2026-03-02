@@ -73,7 +73,10 @@ update_brush :: proc() {
         for shape in redo_queue do delete(shape.points)
         clear(&shapes)
         clear(&redo_queue)
-        camera = Camera{zoom = 0.000001}
+        camera = Camera{
+            zoom = 1e-6,
+        }
+        target_zoom = camera.zoom
         brush_thickness = 4
         brush_color = k2.WHITE
     }
@@ -123,7 +126,11 @@ update_stroke :: proc(button: k2.Mouse_Button, thickness: f64, color: k2.Color) 
                 diff := (stable_world_pos - last) * camera.zoom
                 if linalg.dot(diff, diff) < 4 do return
     
-                append(&shape.points, stable_world_pos)
+                if len(shape.points) == 1 {
+                    append(&shape.points, mouse_world_pos)
+                } else {
+                    append(&shape.points, stable_world_pos)
+                }
                 shape.aabb_min = linalg.min(shape.aabb_min, stable_world_pos)
                 shape.aabb_max = linalg.max(shape.aabb_max, stable_world_pos)
             }
@@ -157,11 +164,10 @@ draw_shapes :: proc() {
         }
         
         thickness := shape.thickness * camera.zoom
-        
-        segments := clamp(int(shape.thickness * camera.zoom * 2), 4, 32)
+        segments := clamp(int(shape.thickness * camera.zoom * 2), 4, 64)
         
         if shape.type == .NORMAL {
-            points := smooth_path(shape.points[:], segments / 4, context.temp_allocator)
+            points := smooth_path(shape.points[:], segments / 2, context.temp_allocator)
             k2.draw_path(points[:], f32(thickness), shape.color, segments)
         } else {
             n := len(shape.points)

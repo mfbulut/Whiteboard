@@ -1,0 +1,1 @@
+odin build . -out:Whiteboard.exe -o:speed -resource:assets/resource.rc -subsystem:windows

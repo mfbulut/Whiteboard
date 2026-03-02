@@ -54,6 +54,7 @@ load_whiteboard :: proc() -> bool {
     }
 
     camera          = read(data, &pos, Camera)    or_return
+    target_zoom     = camera.zoom
     brush_thickness = read(data, &pos, f64)       or_return
     brush_color     = read(data, &pos, k2.Color)  or_return
     num_shapes      := read(data, &pos, u32)      or_return
@@ -73,6 +74,7 @@ load_whiteboard :: proc() -> bool {
         }
         append(&shapes, Shape{points, aabb_min, aabb_max, thickness, color, type})
     }
+
 
     return true
 }
