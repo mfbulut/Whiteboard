@@ -811,7 +811,7 @@ draw_line :: proc(start: Vec2, end: Vec2, thickness: f32, color: Color) {
 draw_path :: proc(points: []Vec2, radius: f32, color: Color, segments := 16) {
     points_len := len(points)
     if points_len < 2 {
-        if points_len == 1 do draw_circle(points[0], radius, color)
+        if points_len == 1 do draw_circle(points[0], radius, color, segments)
         return
     }
 

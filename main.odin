@@ -24,10 +24,12 @@ main :: proc() {
         draw_shapes()
         
         mouse_pos := k2.get_mouse_position()
-        if k2.mouse_button_is_held(.Right) {
-            k2.draw_circle_outline(mouse_pos, f32(brush_thickness), 2, k2.WHITE, 64)
+        if k2.mouse_button_is_held(.Left) {
+            k2.draw_circle(mouse_pos, f32(brush_thickness), k2.WHITE, int(brush_thickness))
+        } else if k2.mouse_button_is_held(.Right) {
+            k2.draw_circle_outline(mouse_pos, f32(brush_thickness), 1, k2.WHITE, int(brush_thickness))
         } else {
-            k2.draw_circle_outline(mouse_pos, f32(brush_thickness), 2, brush_color, 64)
+            k2.draw_circle_outline(mouse_pos, f32(brush_thickness), 1, brush_color, int(brush_thickness))
         }
 
         k2.present()

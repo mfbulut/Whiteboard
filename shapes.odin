@@ -25,6 +25,25 @@ redo_queue      : [dynamic]Shape
 brush_thickness : f64 = 4
 brush_color     := k2.WHITE
 
+STABILIZER_SAMPLES :: 8 
+stabilizer_buffer : [dynamic]Vec2
+
+update_stabilizer :: proc(pos: Vec2) -> Vec2 {
+    append(&stabilizer_buffer, pos)
+    if len(stabilizer_buffer) > STABILIZER_SAMPLES {
+        ordered_remove(&stabilizer_buffer, 0)
+    }
+    
+    avg := Vec2{}
+    total_weight : f64 = 0
+    for p, i in stabilizer_buffer {
+        weight := f64(i + 1)
+        avg += p * weight
+        total_weight += weight
+    }
+    return avg / total_weight
+}
+
 update_brush :: proc() {
     if k2.key_went_down(.N1) do brush_color = k2.WHITE
     if k2.key_went_down(.N2) do brush_color = k2.RED
@@ -32,16 +51,6 @@ update_brush :: proc() {
     if k2.key_went_down(.N4) do brush_color = k2.BLUE
     if k2.key_is_held(.Left_Control) {
         brush_thickness = max(brush_thickness + f64(k2.get_mouse_wheel_delta()), 1)
-    }
-
-    if k2.key_went_down(.R) {
-        for shape in shapes do delete(shape.points)
-        for shape in redo_queue do delete(shape.points)
-        clear(&shapes)
-        clear(&redo_queue)
-        camera = Camera{zoom = 0.000001}
-        brush_thickness = 4
-        brush_color = k2.WHITE
     }
         
     if k2.key_is_held(.Left_Control) && k2.key_went_down(.Z) {
@@ -55,16 +64,30 @@ update_brush :: proc() {
             }
         }
     }
-
+    
     update_stroke(.Left, brush_thickness  / camera.zoom, brush_color)
     update_stroke(.Right, brush_thickness / camera.zoom, BACKGROUND_COLOR)
+    
+    if k2.key_went_down(.R) {
+        for shape in shapes do delete(shape.points)
+        for shape in redo_queue do delete(shape.points)
+        clear(&shapes)
+        clear(&redo_queue)
+        camera = Camera{zoom = 0.000001}
+        brush_thickness = 4
+        brush_color = k2.WHITE
+    }
 }
 
 update_stroke :: proc(button: k2.Mouse_Button, thickness: f64, color: k2.Color) {
     mouse_pos := to_64(k2.get_mouse_position())
     mouse_world_pos := screen_to_world(mouse_pos, camera)
+    stable_world_pos := update_stabilizer(mouse_world_pos)
 
     if k2.mouse_button_went_down(button) {
+        clear(&stabilizer_buffer)
+        append(&stabilizer_buffer, mouse_world_pos)
+
         for len(redo_queue) > 0 {
             shape := pop(&redo_queue)
             delete(shape.points)
@@ -97,12 +120,12 @@ update_stroke :: proc(button: k2.Mouse_Button, thickness: f64, color: k2.Color) 
         switch shape.type {
             case .NORMAL: {
                 last := shape.points[len(shape.points) - 1]
-                diff := (mouse_world_pos - last) * camera.zoom
-                if linalg.dot(diff, diff) < 5 do return
+                diff := (stable_world_pos - last) * camera.zoom
+                if linalg.dot(diff, diff) < 4 do return
     
-                append(&shape.points, mouse_world_pos)
-                shape.aabb_min = linalg.min(shape.aabb_min, mouse_world_pos)
-                shape.aabb_max = linalg.max(shape.aabb_max, mouse_world_pos)
+                append(&shape.points, stable_world_pos)
+                shape.aabb_min = linalg.min(shape.aabb_min, stable_world_pos)
+                shape.aabb_max = linalg.max(shape.aabb_max, stable_world_pos)
             }
             case .LINE: {
                 shape.points[1] = mouse_world_pos
@@ -113,9 +136,46 @@ update_stroke :: proc(button: k2.Mouse_Button, thickness: f64, color: k2.Color) 
                 shape.points[1] = Vec2{mouse_world_pos.x, shape.points[0].y}
                 shape.points[2] = mouse_world_pos
                 shape.points[3] = Vec2{shape.points[0].x, mouse_world_pos.y}
-                
                 shape.aabb_min = linalg.min(shape.points[0], mouse_world_pos)
                 shape.aabb_max = linalg.max(shape.points[0], mouse_world_pos)
+            }
+        }
+    }
+}
+
+draw_shapes :: proc() {
+    screen_size := Vec2{f64(k2.get_screen_width()), f64(k2.get_screen_height())}
+    view_min := screen_to_world({0, 0}, camera)
+    view_max := screen_to_world(screen_size, camera)
+    
+    for shape in shapes {
+        if shape.aabb_max.x + shape.thickness < view_min.x ||
+           shape.aabb_min.x - shape.thickness > view_max.x ||
+           shape.aabb_max.y + shape.thickness < view_min.y ||
+           shape.aabb_min.y - shape.thickness > view_max.y {
+            continue
+        }
+        
+        thickness := shape.thickness * camera.zoom
+        
+        segments := clamp(int(shape.thickness * camera.zoom * 2), 4, 32)
+        
+        if shape.type == .NORMAL {
+            points := smooth_path(shape.points[:], segments / 4, context.temp_allocator)
+            k2.draw_path(points[:], f32(thickness), shape.color, segments)
+        } else {
+            n := len(shape.points)
+            
+            if n > 0 {
+                prev := world_to_screen(shape.points[0], camera)
+                k2.draw_circle(prev, f32(thickness), shape.color, segments)
+                
+                for i in 1..<n {
+                    next := world_to_screen(shape.points[i], camera)
+                    k2.draw_line(prev, next, f32(thickness) * 2, shape.color)
+                    k2.draw_circle(next, f32(thickness), shape.color, segments)
+                    prev = next
+                }
             }
         }
     }
@@ -156,44 +216,4 @@ smooth_path :: proc(points: []Vec2, subdivisions := 16, allocator := context.all
 
     result[idx] = world_to_screen(points[n - 1], camera)
     return result
-}
-
-draw_shapes :: proc() {
-    screen_size := Vec2{f64(k2.get_screen_width()), f64(k2.get_screen_height())}
-    view_min := screen_to_world({0, 0}, camera)
-    view_max := screen_to_world(screen_size, camera)
-    
-    for shape in shapes {
-        if shape.aabb_max.x + shape.thickness < view_min.x ||
-            shape.aabb_min.x - shape.thickness > view_max.x ||
-            shape.aabb_max.y + shape.thickness < view_min.y ||
-            shape.aabb_min.y - shape.thickness > view_max.y {
-            continue
-        }
-        
-        thickness := shape.thickness * camera.zoom
-        
-        segments := clamp(int(shape.thickness * camera.zoom * 2), 4, 64)
-        
-        if shape.type == .NORMAL {
-            points := smooth_path(shape.points[:], segments / 4, context.temp_allocator)
-            k2.draw_path(points[:], f32(thickness), shape.color, segments)
-            fmt.println(segments)
-        } else {
-            n := len(shape.points)
-            
-            if n > 0 {
-                prev := world_to_screen(shape.points[0], camera)
-                k2.draw_circle(prev, f32(thickness), shape.color, segments)
-                
-                for i in 1..<n {
-                    next := world_to_screen(shape.points[i], camera)
-                    k2.draw_line(prev, next, f32(thickness) * 2, shape.color)
-                    k2.draw_circle(next, f32(thickness), shape.color, segments)
-                    prev = next
-                }
-            }
-        
-        }
-    }
 }
