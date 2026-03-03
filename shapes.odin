@@ -11,15 +11,17 @@ ShapeType :: enum {
 	LINE,
 	RECT,
     GRID,
+    IMAGE,
 }
 
 Shape :: struct {
-    points:    [dynamic]Vec2,
+    type:      ShapeType,
     aabb_min:  Vec2,
     aabb_max:  Vec2,
     thickness: f64,
     color:     k2.Color,
-    type:      ShapeType
+    points:    [dynamic]Vec2,
+    image:     k2.Texture
 }
 
 shapes          : [dynamic]Shape
@@ -155,6 +157,7 @@ update_stroke :: proc(button: k2.Mouse_Button, thickness: f64, color: k2.Color) 
                 shape.aabb_min = linalg.min(shape.points[0], mouse_world_pos)
                 shape.aabb_max = linalg.max(shape.points[0], mouse_world_pos)
             }
+            case .IMAGE:
         }
     }
 }
@@ -163,6 +166,7 @@ draw_shapes :: proc() {
     screen_size := Vec2{f64(k2.get_screen_width()), f64(k2.get_screen_height())}
     view_min := screen_to_world({0, 0}, camera)
     view_max := screen_to_world(screen_size, camera)
+    
     
     for shape in shapes {
         if shape.aabb_max.x + shape.thickness < view_min.x ||
@@ -175,64 +179,78 @@ draw_shapes :: proc() {
         thickness := shape.thickness * camera.zoom
         segments := clamp(int(shape.thickness * camera.zoom * 2), 4, 64)
         
-        if shape.type == .NORMAL {
-            points := smooth_path(shape.points[:], segments / 2, context.temp_allocator)
-            k2.draw_path(points[:], f32(thickness), shape.color, segments)
-        } else if shape.type == .GRID {
-            if len(shape.points) < 2 do break
-            
-            p0 := shape.points[0]
-            p1 := shape.points[1]
-            
-            min_p := linalg.min(p0, p1)
-            max_p := linalg.max(p0, p1)
-            
-            size   := max_p - min_p
-            if size.x == 0 || size.y == 0 do break
-            
-            cell_size := shape.thickness * 28
-            
-            cols := max(int(size.x / cell_size), 1)
-            rows := max(int(size.y / cell_size), 1)
-            
-            cell_w := size.x / f64(cols)
-            cell_h := size.y / f64(rows)
-            
-            thickness := shape.thickness * camera.zoom
-            segments  := clamp(int(thickness * 2), 4, 16)
-            
-            for i in 0..=cols {
-                x := min_p.x + f64(i) * cell_w
-                a := world_to_screen(Vec2{x, min_p.y}, camera)
-                b := world_to_screen(Vec2{x, max_p.y}, camera)
-                k2.draw_line(a, b, f32(thickness) * 2, shape.color)
-                k2.draw_circle(a, f32(thickness), shape.color, segments)
-                k2.draw_circle(b, f32(thickness), shape.color, segments)
+        switch shape.type {
+            case .NORMAL: {
+                points := smooth_path(shape.points[:], segments / 2, context.temp_allocator)
+                k2.draw_path(points[:], f32(thickness), shape.color, segments)
             }
-            
-            for i in 0..=rows {
-                y := min_p.y + f64(i) * cell_h
-                a := world_to_screen(Vec2{min_p.x, y}, camera)
-                b := world_to_screen(Vec2{max_p.x, y}, camera)
-                k2.draw_line(a, b, f32(thickness) * 2, shape.color)
-                k2.draw_circle(a, f32(thickness), shape.color, segments)
-                k2.draw_circle(b, f32(thickness), shape.color, segments)
-            }
-        } else {
-            n := len(shape.points)
-            
-            if n > 0 {
-                prev := world_to_screen(shape.points[0], camera)
-                k2.draw_circle(prev, f32(thickness), shape.color, segments)
+            case .LINE, .RECT: {
+                n := len(shape.points)
                 
-                for i in 1..<n {
-                    next := world_to_screen(shape.points[i], camera)
-                    k2.draw_line(prev, next, f32(thickness) * 2, shape.color)
-                    k2.draw_circle(next, f32(thickness), shape.color, segments)
-                    prev = next
+                if n > 0 {
+                    prev := world_to_screen(shape.points[0], camera)
+                    k2.draw_circle(prev, f32(thickness), shape.color, segments)
+                    
+                    for i in 1..<n {
+                        next := world_to_screen(shape.points[i], camera)
+                        k2.draw_line(prev, next, f32(thickness) * 2, shape.color)
+                        k2.draw_circle(next, f32(thickness), shape.color, segments)
+                        prev = next
+                    }
+                }
+            }
+            case .IMAGE: {
+                if shape.image.width == 0 do continue
+            
+                screen_tl := world_to_screen(shape.aabb_min, camera)
+                screen_size := world_to_screen(shape.aabb_max, camera) - screen_tl
+            
+                src := k2.get_texture_rect(shape.image)
+                dst := k2.Rect{screen_tl.x, screen_tl.y, screen_size.x, screen_size.y}
+                k2.draw_texture_ex(shape.image, src, dst, {}, 0, k2.WHITE)
+            }
+            case .GRID: {
+                if len(shape.points) < 2 do break
+                
+                p0 := shape.points[0]
+                p1 := shape.points[1]
+                
+                min_p := linalg.min(p0, p1)
+                max_p := linalg.max(p0, p1)
+                
+                size   := max_p - min_p
+                if size.x == 0 || size.y == 0 do break
+                
+                cell_size := shape.thickness * 24            
+                cols := max(int(size.x / cell_size), 1)
+                rows := max(int(size.y / cell_size), 1)
+                
+                cell_w := size.x / f64(cols)
+                cell_h := size.y / f64(rows)
+                
+                thickness := shape.thickness * camera.zoom / 2
+                segments  := clamp(int(thickness * 2), 4, 16)
+                
+                for i in 0..=cols {
+                    x := min_p.x + f64(i) * cell_w
+                    a := world_to_screen(Vec2{x, min_p.y}, camera)
+                    b := world_to_screen(Vec2{x, max_p.y}, camera)
+                    k2.draw_line(a, b, f32(thickness) * 2, shape.color)
+                    k2.draw_circle(a, f32(thickness), shape.color, segments)
+                    k2.draw_circle(b, f32(thickness), shape.color, segments)
+                }
+                
+                for i in 0..=rows {
+                    y := min_p.y + f64(i) * cell_h
+                    a := world_to_screen(Vec2{min_p.x, y}, camera)
+                    b := world_to_screen(Vec2{max_p.x, y}, camera)
+                    k2.draw_line(a, b, f32(thickness) * 2, shape.color)
+                    k2.draw_circle(a, f32(thickness), shape.color, segments)
+                    k2.draw_circle(b, f32(thickness), shape.color, segments)
                 }
             }
         }
+
     }
 }
 

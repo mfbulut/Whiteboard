@@ -185,6 +185,17 @@ windows_get_events :: proc(events: ^[dynamic]Event) {
 		}
 	}
 
+    {
+        pt: win32.POINT
+        if win32.GetCursorPos(&pt) {
+            win32.ScreenToClient(s.hwnd, &pt)
+    
+            append(&s.events, Event_Mouse_Move{
+                position = { f32(pt.x), f32(pt.y) },
+            })
+        }
+    }
+
 	append(events, ..s.events[:])
 	runtime.clear(&s.events)
 }

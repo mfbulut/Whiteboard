@@ -26,11 +26,11 @@ save_whiteboard :: proc() {
     append_val(&buf, u32(len(shapes)))
 
     for shape in shapes {
-        append_val(&buf, shape.color)
-        append_val(&buf, shape.thickness)
+        append_val(&buf, shape.type)
         append_val(&buf, shape.aabb_min)
         append_val(&buf, shape.aabb_max)
-        append_val(&buf, shape.type)
+        append_val(&buf, shape.thickness)
+        append_val(&buf, shape.color)
         append_val(&buf, u32(len(shape.points)))
         for p in shape.points do append_val(&buf, p)
     }
@@ -60,11 +60,11 @@ load_whiteboard :: proc() -> bool {
     num_shapes      := read(data, &pos, u32)      or_return
 
     for _ in 0..<num_shapes {
-        color     := read(data, &pos, k2.Color)  or_return
-        thickness := read(data, &pos, f64)       or_return
+        type      := read(data, &pos, ShapeType) or_return
         aabb_min  := read(data, &pos, Vec2)      or_return
         aabb_max  := read(data, &pos, Vec2)      or_return
-        type      := read(data, &pos, ShapeType) or_return
+        thickness := read(data, &pos, f64)       or_return
+        color     := read(data, &pos, k2.Color)  or_return
         num_pts   := read(data, &pos, u32)       or_return
         
         points := make([dynamic]Vec2, 0, num_pts)
@@ -72,7 +72,7 @@ load_whiteboard :: proc() -> bool {
             p := read(data, &pos, Vec2) or_return
             append(&points, p)
         }
-        append(&shapes, Shape{points, aabb_min, aabb_max, thickness, color, type})
+        append(&shapes, Shape{type, aabb_min, aabb_max, thickness, color, points, {}})
     }
 
 
