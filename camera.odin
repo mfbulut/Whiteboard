@@ -24,10 +24,13 @@ update_camera :: proc() {
     }
     
     ZOOM_SMOOTH :: 0.15
-    mouse_world_before := screen_to_world(mouse_pos, camera)
+    old_zoom := camera.zoom
     camera.zoom += (target_zoom - camera.zoom) * ZOOM_SMOOTH
-    mouse_world_after := screen_to_world(mouse_pos, camera)
-    camera.position += mouse_world_before - mouse_world_after
+    camera.position += mouse_pos * (1.0 / old_zoom - 1.0 / camera.zoom)
+    
+    if !k2.key_is_held(.Left_Shift) {
+        brush_thickness *= camera.zoom / old_zoom
+    }
 
     PAN_SMOOTH :: 0.5
     

@@ -1,5 +1,4 @@
 #+build windows
-#+private file
 
 package karl2d
 
@@ -355,6 +354,7 @@ Windows_State :: struct {
 	restore_screen_height: int,
 
 	window_render_glue: Window_Render_Glue,
+    file_drop_callback: proc(path: string),
 }
 
 windows_set_window_mode :: proc(window_mode: Window_Mode) {
@@ -415,6 +415,11 @@ windows_set_cursor_visible :: proc(visible: bool) {
 
 windows_get_cursor_visible :: proc() -> bool {
 	return s.cursor_visible
+}
+
+windows_set_file_drop_callback :: proc(callback: proc(path: string)) {
+    s.file_drop_callback = callback
+    win32.DragAcceptFiles(s.hwnd, true)
 }
 
 s: ^Windows_State
@@ -559,6 +564,24 @@ window_proc :: proc "stdcall" (hwnd: win32.HWND, msg: win32.UINT, wparam: win32.
 
 	case win32.WM_KILLFOCUS:
 		append(&s.events, Event_Window_Unfocused {})
+    case win32.WM_DROPFILES:
+        drop := win32.HDROP(wparam)
+        file_count := win32.DragQueryFileW(drop, 0xFFFFFFFF, nil, 0)
+    
+		for i in 0 ..< file_count {
+			length := win32.DragQueryFileW(drop, u32(i), nil, 0)
+
+			if length > 0 {
+				buffer := make([]u16, length + 1, context.temp_allocator)
+				win32.DragQueryFileW(drop, u32(i), raw_data(buffer), u32(len(buffer)))
+
+				if utf8_str, err := win32.wstring_to_utf8(transmute(cstring16)raw_data(buffer), len(buffer)); err == nil {
+                    s.file_drop_callback(utf8_str)
+    			}
+			}
+		}
+
+        win32.DragFinish(drop)
 	}
 
 	return win32.DefWindowProcW(hwnd, msg, wparam, lparam)
