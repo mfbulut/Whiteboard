@@ -1,18 +1,13 @@
 package main
 
 import "core:os"
-import "core:path/filepath"
+import "core:image"
+import "core:image/qoi"
+import "core:bytes"
 
 import k2 "karl2d"
 
-get_whiteboard_path :: proc() -> string {
-    docs, _ := os.user_documents_dir(context.allocator)
-    file_path, _ := filepath.join({docs, "whiteboard.bin"}, context.allocator)
-    return file_path
-}
-
-save_whiteboard :: proc() {
-    path := get_whiteboard_path()
+save_whiteboard :: proc(filepath: string) {
     buf := make([dynamic]byte, 0, 1024, context.allocator)
 
     append_val :: proc(buf: ^[dynamic]byte, v: $T) {
@@ -33,48 +28,66 @@ save_whiteboard :: proc() {
         append_val(&buf, shape.color)
         append_val(&buf, u32(len(shape.points)))
         for p in shape.points do append_val(&buf, p)
+
+        if shape.type == .IMAGE {
+            qoi_buf: bytes.Buffer
+            bytes.buffer_init_allocator(&qoi_buf, 0, 0, context.allocator)
+            qoi.save_to_buffer(&qoi_buf, shape.image)
+            append_val(&buf, u32(len(qoi_buf.buf[:])))
+            append(&buf, ..qoi_buf.buf[:])
+        }
     }
 
-    _ = os.write_entire_file(path, buf[:])
+    _ = os.write_entire_file(filepath, buf[:])
 }
 
-load_whiteboard :: proc() -> bool {
-    path := get_whiteboard_path()
-    data, err := os.read_entire_file(path, context.allocator)
-    defer delete(data)
-    if err != nil do return false
+load_whiteboard :: proc(filepath: string) {
+    data, err := os.read_entire_file(filepath, context.allocator)
+    if err != nil do return
 
     pos := 0
-    read :: proc(data: []byte, pos: ^int, $T: typeid) -> (v: T, ok: bool) {
-        if pos^ + size_of(T) > len(data) do return
-        v = (cast(^T)&data[pos^])^
+    read :: proc(data: []byte, pos: ^int, $T: typeid) -> T {
+        v := (cast(^T)&data[pos^])^
         pos^ += size_of(T)
-        ok = true
-        return
+        return v
     }
 
-    camera          = read(data, &pos, Camera)    or_return
+    camera          = read(data, &pos, Camera)
     target_zoom     = camera.zoom
-    brush_thickness = read(data, &pos, f64)       or_return
-    brush_color     = read(data, &pos, k2.Color)  or_return
-    num_shapes      := read(data, &pos, u32)      or_return
+    brush_thickness = read(data, &pos, f64)
+    brush_color     = read(data, &pos, k2.Color)
+    num_shapes     := read(data, &pos, u32)
 
     for _ in 0..<num_shapes {
-        type      := read(data, &pos, ShapeType) or_return
-        aabb_min  := read(data, &pos, Vec2)      or_return
-        aabb_max  := read(data, &pos, Vec2)      or_return
-        thickness := read(data, &pos, f64)       or_return
-        color     := read(data, &pos, k2.Color)  or_return
-        num_pts   := read(data, &pos, u32)       or_return
-        
+        type      := read(data, &pos, ShapeType)
+        aabb_min  := read(data, &pos, Vec2)
+        aabb_max  := read(data, &pos, Vec2)
+        thickness := read(data, &pos, f64)
+        color     := read(data, &pos, k2.Color)
+        num_pts   := read(data, &pos, u32)
+
         points := make([dynamic]Vec2, 0, num_pts)
         for _ in 0..<num_pts {
-            p := read(data, &pos, Vec2) or_return
+            p := read(data, &pos, Vec2)
             append(&points, p)
         }
-        append(&shapes, Shape{type, aabb_min, aabb_max, thickness, color, points, {}})
+
+        img: ^image.Image
+        tex: k2.Texture
+
+        if type == .IMAGE {
+            if qoi_size := read(data, &pos, u32); qoi_size > 0 {
+                end := pos + int(qoi_size)
+                img_loaded, img_err := qoi.load_from_bytes(data[pos:end], {.alpha_add_if_missing}, context.allocator)
+                pos = end
+
+                if img_err == nil {
+                    img = img_loaded
+                    tex = k2.load_texture_from_bytes_raw(img.pixels.buf[:], img.width, img.height, .RGBA_8_Norm)
+                }
+            }
+        }
+
+        append(&shapes, Shape{type, aabb_min, aabb_max, thickness, color, points, img, tex})
     }
-
-
-    return true
 }

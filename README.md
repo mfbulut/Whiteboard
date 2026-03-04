@@ -1,6 +1,6 @@
 # Whiteboard
 
-# W.I.P. 
+# W.I.P.
 
 # Controls
 
@@ -11,6 +11,7 @@ Draw:
 
 * Shift + Left Mouse -> Draw Line
 * Ctrl + Left Mouse -> Draw Rectangle
+* G + Left Mouse -> Draw Grid
 
 * 1/2/3/4/5/6/7 -> White/R/G/B/C/Y/M
 
@@ -24,4 +25,5 @@ Camera:
 Other:
 * Z -> Undo
 * R -> Reset
+* Grag & drop images
 
