@@ -84,7 +84,7 @@ update_brush :: proc() {
         clear(&shapes)
         clear(&redo_queue)
         camera = Camera{
-            zoom = 1e-6,
+            zoom = 1e-8,
         }
         target_zoom = camera.zoom
         brush_thickness = 3
@@ -252,25 +252,11 @@ draw_shapes :: proc() {
                 }
             }
         }
-
     }
 }
 
 smooth_path :: proc(points: []Vec2, subdivisions := 16, allocator := context.allocator) -> []k2.Vec2 {
     n := len(points)
-
-    if n == 0 do return {}
-
-    catmull_rom :: proc(p0, p1, p2, p3: Vec2, t: f64) -> Vec2 {
-        t2, t3 := t * t, t * t * t
-        return 0.5 * (
-            2.0 * p1 +
-            (-p0 + p2) * t +
-            (2.0*p0 - 5.0*p1 + 4.0*p2 - p3) * t2 +
-            (-p0 + 3.0*p1 - 3.0*p2 + p3) * t3
-        )
-    }
-
     total  := (n - 1) * subdivisions + 1
     result := make([]k2.Vec2, total, allocator)
 
@@ -283,7 +269,7 @@ smooth_path :: proc(points: []Vec2, subdivisions := 16, allocator := context.all
 
         for sub in 0 ..< subdivisions {
             t := f64(sub) / f64(subdivisions)
-            p := catmull_rom(cp0, cp1, cp2, cp3, t)
+            p := linalg.catmull_rom(cp0, cp1, cp2, cp3, t)
             result[idx] = world_to_screen(p)
             idx += 1
         }

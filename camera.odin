@@ -8,8 +8,8 @@ Camera :: struct {
     position: Vec2,
 }
 
-camera := Camera{ zoom = 1e-6 }
-target_zoom := 1e-6
+camera := Camera{ zoom = 1e-8 }
+target_zoom := 1e-8
 drag_start: Vec2
 
 update_camera :: proc() {
@@ -27,10 +27,6 @@ update_camera :: proc() {
     old_zoom := camera.zoom
     camera.zoom += (target_zoom - camera.zoom) * ZOOM_SMOOTH
     camera.position += mouse_pos * (1.0 / old_zoom - 1.0 / camera.zoom)
-
-    if !k2.key_is_held(.Left_Shift) {
-        brush_thickness *= camera.zoom / old_zoom
-    }
 
     PAN_SMOOTH :: 0.5
 
