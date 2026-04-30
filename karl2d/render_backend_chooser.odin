@@ -3,7 +3,7 @@ package karl2d
 CONFIG_RENDER_BACKEND_NAME :: #config(KARL2D_RENDER_BACKEND, "")
 
 when ODIN_OS == .Windows {
-	DEFAULT_RENDER_BACKEND_NAME :: "gl"
+	DEFAULT_RENDER_BACKEND_NAME :: "d3d11"
 	AVAILABLE_RENDER_BACKENDS :: "d3d11, gl, nil"
 } else when ODIN_OS == .Linux || ODIN_OS == .Darwin {
 	DEFAULT_RENDER_BACKEND_NAME :: "gl"

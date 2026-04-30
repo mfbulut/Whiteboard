@@ -1,18 +1,17 @@
 package main
 
 import "core:fmt"
-import "core:image"
-import "core:math"
 import "core:math/linalg"
 
 import k2 "karl2d"
+
+Vec2 :: [2]f64
 
 ShapeType :: enum {
 	NORMAL,
 	LINE,
 	RECT,
     GRID,
-    IMAGE,
 }
 
 Shape :: struct {
@@ -22,8 +21,6 @@ Shape :: struct {
     thickness: f64,
     color:     k2.Color,
     points:    [dynamic]Vec2,
-    image:     ^image.Image,
-    texture:   k2.Texture,
 }
 
 shapes          : [dynamic]Shape
@@ -32,13 +29,14 @@ brush_thickness : f64 = 3
 brush_color     := k2.WHITE
 
 STABILIZER_SAMPLES :: 8
-stabilizer_buffer : [dynamic]Vec2
+stabilizer_buffer : [dynamic; STABILIZER_SAMPLES]Vec2
 
 update_stabilizer :: proc(pos: Vec2) -> Vec2 {
-    append(&stabilizer_buffer, pos)
-    if len(stabilizer_buffer) > STABILIZER_SAMPLES {
+    if len(stabilizer_buffer) + 1 > STABILIZER_SAMPLES {
         ordered_remove(&stabilizer_buffer, 0)
     }
+
+    append(&stabilizer_buffer, pos)
 
     avg := Vec2{}
     total_weight : f64 = 0
@@ -52,7 +50,7 @@ update_stabilizer :: proc(pos: Vec2) -> Vec2 {
 
 update_brush :: proc() {
     if k2.key_went_down(.N1) do brush_color = k2.WHITE
-    if k2.key_went_down(.N2) do brush_color = k2.Color{239, 0, 0, 255}
+    if k2.key_went_down(.N2) do brush_color = k2.Color{219, 46, 0, 255}
     if k2.key_went_down(.N3) do brush_color = k2.Color{0, 138, 0, 255}
     if k2.key_went_down(.N4) do brush_color = k2.Color{0, 119, 255, 255}
     if k2.key_went_down(.N5) do brush_color = k2.Color{25, 198, 236, 255}
@@ -159,7 +157,6 @@ update_stroke :: proc(button: k2.Mouse_Button, thickness: f64, color: k2.Color) 
                 shape.aabb_min = linalg.min(shape.points[0], mouse_world_pos)
                 shape.aabb_max = linalg.max(shape.points[0], mouse_world_pos)
             }
-            case .IMAGE:
         }
     }
 }
@@ -168,7 +165,6 @@ draw_shapes :: proc() {
     screen_size := Vec2{f64(k2.get_screen_width()), f64(k2.get_screen_height())}
     view_min := screen_to_world(Vec2{0, 0})
     view_max := screen_to_world(screen_size)
-
 
     for shape in shapes {
         if shape.aabb_max.x + shape.thickness < view_min.x ||
@@ -183,7 +179,7 @@ draw_shapes :: proc() {
 
         switch shape.type {
             case .NORMAL: {
-                points := smooth_path(shape.points[:], segments / 2, context.temp_allocator)
+                points := screen_to_world(shape.points[:])
                 k2.draw_path(points[:], f32(thickness), shape.color, segments)
             }
             case .LINE, .RECT: {
@@ -201,80 +197,42 @@ draw_shapes :: proc() {
                     }
                 }
             }
-            case .IMAGE: {
-                if shape.texture.width == 0 do continue
-
-                screen_tl := world_to_screen(shape.aabb_min)
-                screen_size := world_to_screen(shape.aabb_max) - screen_tl
-
-                src := k2.get_texture_rect(shape.texture)
-                dst := k2.Rect{screen_tl.x, screen_tl.y, screen_size.x, screen_size.y}
-                k2.draw_texture_ex(shape.texture, src, dst, {}, 0, k2.WHITE)
-            }
             case .GRID: {
                 if len(shape.points) < 2 do break
-
                 p0 := shape.points[0]
                 p1 := shape.points[1]
-
                 min_p := linalg.min(p0, p1)
                 max_p := linalg.max(p0, p1)
-
-                size   := max_p - min_p
+                size  := max_p - min_p
                 if size.x == 0 || size.y == 0 do break
 
-                cell_size := shape.thickness * 24
-                cols := max(int(size.x / cell_size), 1)
-                rows := max(int(size.y / cell_size), 1)
+                cell  := shape.thickness * 24
+                cols  := max(int(size.x / cell), 1)
+                rows  := max(int(size.y / cell), 1)
 
-                cell_w := size.x / f64(cols)
-                cell_h := size.y / f64(rows)
+                grid_max := Vec2{min_p.x + f64(cols) * cell, min_p.y + f64(rows) * cell}
 
                 thickness := shape.thickness * camera.zoom / 2
                 segments  := clamp(int(thickness * 2), 4, 16)
 
                 for i in 0..=cols {
-                    x := min_p.x + f64(i) * cell_w
+                    x := min_p.x + f64(i) * cell
                     a := world_to_screen(Vec2{x, min_p.y})
-                    b := world_to_screen(Vec2{x, max_p.y})
+                    b := world_to_screen(Vec2{x, grid_max.y})
                     k2.draw_line(a, b, f32(thickness) * 2, shape.color)
-                    k2.draw_circle(a, f32(thickness), shape.color, segments)
-                    k2.draw_circle(b, f32(thickness), shape.color, segments)
+                }
+                for i in 0..=rows {
+                    y := min_p.y + f64(i) * cell
+                    a := world_to_screen(Vec2{min_p.x, y})
+                    b := world_to_screen(Vec2{grid_max.x, y})
+                    k2.draw_line(a, b, f32(thickness) * 2, shape.color)
                 }
 
-                for i in 0..=rows {
-                    y := min_p.y + f64(i) * cell_h
-                    a := world_to_screen(Vec2{min_p.x, y})
-                    b := world_to_screen(Vec2{max_p.x, y})
-                    k2.draw_line(a, b, f32(thickness) * 2, shape.color)
-                    k2.draw_circle(a, f32(thickness), shape.color, segments)
-                    k2.draw_circle(b, f32(thickness), shape.color, segments)
-                }
+
+                k2.draw_circle(world_to_screen(min_p), f32(thickness), shape.color, segments)
+                k2.draw_circle(world_to_screen(min_p), f32(thickness), shape.color, segments)
             }
         }
     }
 }
 
-smooth_path :: proc(points: []Vec2, subdivisions := 16, allocator := context.allocator) -> []k2.Vec2 {
-    n := len(points)
-    total  := (n - 1) * subdivisions + 1
-    result := make([]k2.Vec2, total, allocator)
-
-    idx := 0
-    for i in 0 ..< n - 1 {
-        cp0 := points[max(i - 1, 0)]
-        cp1 := points[i]
-        cp2 := points[i + 1]
-        cp3 := points[min(i + 2, n - 1)]
-
-        for sub in 0 ..< subdivisions {
-            t := f64(sub) / f64(subdivisions)
-            p := linalg.catmull_rom(cp0, cp1, cp2, cp3, t)
-            result[idx] = world_to_screen(p)
-            idx += 1
-        }
-    }
-
-    result[idx] = world_to_screen(points[n - 1])
-    return result
-}

@@ -44,6 +44,16 @@ to_64 :: proc(v: k2.Vec2) -> Vec2 {
     return {f64(v.x), f64(v.y)}
 }
 
+screen_to_world_vec :: proc(points: []Vec2, allocator := context.temp_allocator) -> []k2.Vec2 {
+    result := make([]k2.Vec2, len(points))
+
+    for &p, i in result {
+        p = world_to_screen(points[i])
+    }
+
+    return result
+}
+
 screen_to_world_f64 :: proc(screen_pos: Vec2) -> Vec2 {
     return screen_pos / camera.zoom + camera.position
 }
@@ -52,7 +62,7 @@ screen_to_world_f32 :: proc(screen_pos: k2.Vec2) -> Vec2 {
     return to_64(screen_pos) / camera.zoom + camera.position
 }
 
-screen_to_world :: proc{screen_to_world_f32, screen_to_world_f64}
+screen_to_world :: proc{screen_to_world_f32, screen_to_world_f64, screen_to_world_vec}
 
 world_to_screen :: proc(world_pos: Vec2) -> k2.Vec2 {
     p := (world_pos - camera.position) * camera.zoom

@@ -1,4 +1,6 @@
+#+vet explicit-allocators
 #+build windows
+#+private file
 
 package karl2d
 
@@ -16,11 +18,12 @@ PLATFORM_WINDOWS :: Platform_Interface {
 	get_window_scale = windows_get_window_scale,
 	set_window_mode = windows_set_window_mode,
 	set_cursor_visible = windows_set_cursor_visible,
-	get_cursor_visible = windows_get_cursor_visible,
 
 	is_gamepad_active = windows_is_gamepad_active,
 	get_gamepad_axis = windows_get_gamepad_axis,
 	set_gamepad_vibration = windows_set_gamepad_vibration,
+
+	open_url = windows_open_url,
 
 	set_internal_state = windows_set_internal_state,
 }
@@ -45,9 +48,6 @@ windows_init :: proc(
 	assert(platform_state != nil)
 	s = (^Windows_State)(platform_state)
 	s.allocator = allocator
-	s.screen_width = screen_width
-	s.screen_height = screen_height
-	s.cursor_visible = true
 	s.events = make([dynamic]Event, allocator = allocator)
 	s.custom_context = context
 	
@@ -66,37 +66,45 @@ windows_init :: proc(
 
 	win32.RegisterClassW(&cls)
 
+	dpix, dpiy: win32.UINT
+	win32.GetDpiForMonitor(win32.MonitorFromWindow(nil, .MONITOR_DEFAULTTOPRIMARY), {}, &dpix, &dpiy)
+	s.window_scale = f32(dpix)/96.0
+
+	if options.disable_auto_scale_hint {
+		s.screen_width = screen_width
+		s.screen_height = screen_height
+	} else {
+		s.screen_width = int(f32(screen_width) * s.window_scale)
+		s.screen_height = int(f32(screen_height) * s.window_scale)
+	}
+
 	// Since this is the size of the screen we adjust it to become the size of the window. This is
 	// done using `AdjustWindowRectExForDpi`. It adds the space needed for the window borders etc.
 	initial_rect := win32.RECT {
 		0,
 		0,
-		i32(screen_width),
-		i32(screen_height),
+		i32(s.screen_width),
+		i32(s.screen_height),
 	}
 
-	dpix, dpiy: win32.UINT
-	win32.GetDpiForMonitor(win32.MonitorFromWindow(nil, .MONITOR_DEFAULTTOPRIMARY), {}, &dpix, &dpiy)
 	win32.AdjustWindowRectExForDpi(&initial_rect, windows_get_style(options.window_mode), false, {}, dpix)
 
 	// We create a window with default position and size. We set the correct size in
 	// `windows_set_window_mode`.
 	s.hwnd = win32.CreateWindowW(
 		CLASS_NAME,
-		win32.utf8_to_wstring(window_title),
+		win32.utf8_to_wstring(window_title, frame_allocator),
 		win32.WS_VISIBLE,
 		win32.CW_USEDEFAULT, win32.CW_USEDEFAULT,
 		i32(initial_rect.right - initial_rect.left),
 		i32(initial_rect.bottom - initial_rect.top),
 		nil, nil, instance, nil,
 	)
+
 	assert(s.hwnd != nil, "Failed creating window")
 
 	windows_set_window_mode(options.window_mode)
 	
-    local_true : b32 = true
-    win32.DwmSetWindowAttribute(s.hwnd, u32(win32.DWMWINDOWATTRIBUTE.DWMWA_USE_IMMERSIVE_DARK_MODE), &local_true, size_of(local_true))
-
 	win32.XInputEnable(true)
 
 	when RENDER_BACKEND_NAME == "d3d11" {
@@ -136,6 +144,10 @@ windows_get_events :: proc(events: ^[dynamic]Event) {
 
 		for win32.XInputGetKeystroke(win32.XUSER(gamepad), 0, &gp_event) == .SUCCESS {
 			button: Maybe(Gamepad_Button)
+
+			if .REPEAT in gp_event.Flags {
+				continue
+			}
 
 			#partial switch gp_event.VirtualKey {
 			case .DPAD_UP:    button = .Left_Face_Up
@@ -184,17 +196,6 @@ windows_get_events :: proc(events: ^[dynamic]Event) {
 			}
 		}
 	}
-
-    {
-        pt: win32.POINT
-        if win32.GetCursorPos(&pt) {
-            win32.ScreenToClient(s.hwnd, &pt)
-    
-            append(&s.events, Event_Mouse_Move{
-                position = { f32(pt.x), f32(pt.y) },
-            })
-        }
-    }
 
 	append(events, ..s.events[:])
 	runtime.clear(&s.events)
@@ -285,7 +286,7 @@ windows_set_screen_size :: proc(w, h: int) {
 }
 
 windows_get_window_scale :: proc() -> f32 {
-	return f32(win32.GetDpiForWindow(s.hwnd))/96.0
+	return s.window_scale
 }
 
 windows_is_gamepad_active :: proc(gamepad: int) -> bool {
@@ -324,6 +325,15 @@ windows_get_gamepad_axis :: proc(gamepad: int, axis: Gamepad_Axis) -> f32 {
 	return 0
 }
 
+windows_open_url :: proc(url: string) -> bool {
+	cmd := win32.utf8_to_wstring(url, frame_allocator)
+	res := win32.ShellExecuteW(s.hwnd, "open", cmd, nil, nil, win32.SW_NORMAL)
+
+	// https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew#return-value:
+	// If the function succeeds, it returns a value greater than 32.
+	return uintptr(res) > 32
+}
+
 windows_set_gamepad_vibration :: proc(gamepad: int, left: f32, right: f32) {
 	if gamepad < 0 || gamepad >= MAX_GAMEPADS {
 		return
@@ -347,10 +357,11 @@ Windows_State :: struct {
 	custom_context: runtime.Context,
 	hwnd: win32.HWND,
 	window_mode: Window_Mode,
-	cursor_visible: bool,
 
 	screen_width: int,
 	screen_height: int,
+
+	window_scale: f32,
 
 	in_resize_move_state: bool,
 	screen_width_before_resize_move: int,
@@ -365,7 +376,6 @@ Windows_State :: struct {
 	restore_screen_height: int,
 
 	window_render_glue: Window_Render_Glue,
-    file_drop_callback: proc(path: string),
 }
 
 windows_set_window_mode :: proc(window_mode: Window_Mode) {
@@ -419,18 +429,7 @@ windows_set_window_mode :: proc(window_mode: Window_Mode) {
 }
 
 windows_set_cursor_visible :: proc(visible: bool) {
-	if visible == s.cursor_visible do return
-	s.cursor_visible = visible
 	win32.ShowCursor(win32.BOOL(visible))
-}
-
-windows_get_cursor_visible :: proc() -> bool {
-	return s.cursor_visible
-}
-
-windows_set_file_drop_callback :: proc(callback: proc(path: string)) {
-    s.file_drop_callback = callback
-    win32.DragAcceptFiles(s.hwnd, true)
 }
 
 s: ^Windows_State
@@ -526,11 +525,13 @@ window_proc :: proc "stdcall" (hwnd: win32.HWND, msg: win32.UINT, wparam: win32.
 		}
 
 	case win32.WM_DPICHANGED:
-		// Set the window mode again so everything is correct size after DPI change.
-		windows_set_window_mode(s.window_mode)
+		new_dpi := win32.LOWORD(wparam)
+		s.window_scale = f32(new_dpi) / 96.0
 
 		append(&s.events, Event_Window_Scale_Changed {
-			scale = windows_get_window_scale(),
+			scale = s.window_scale,
+			screen_width = s.screen_width,
+			screen_height = s.screen_height,
 		})
 
 	case win32.WM_ENTERSIZEMOVE:
@@ -565,8 +566,8 @@ window_proc :: proc "stdcall" (hwnd: win32.HWND, msg: win32.UINT, wparam: win32.
 		// not get spammy.
 		if !s.in_resize_move_state {
 			append(&s.events, Event_Screen_Resize {
-				width = int(width),
-				height = int(height),
+				width = s.screen_width,
+				height = s.screen_height,
 			})
 		}
 
@@ -575,24 +576,6 @@ window_proc :: proc "stdcall" (hwnd: win32.HWND, msg: win32.UINT, wparam: win32.
 
 	case win32.WM_KILLFOCUS:
 		append(&s.events, Event_Window_Unfocused {})
-    case win32.WM_DROPFILES:
-        drop := win32.HDROP(wparam)
-        file_count := win32.DragQueryFileW(drop, 0xFFFFFFFF, nil, 0)
-    
-		for i in 0 ..< file_count {
-			length := win32.DragQueryFileW(drop, u32(i), nil, 0)
-
-			if length > 0 {
-				buffer := make([]u16, length + 1, context.temp_allocator)
-				win32.DragQueryFileW(drop, u32(i), raw_data(buffer), u32(len(buffer)))
-
-				if utf8_str, err := win32.wstring_to_utf8(transmute(cstring16)raw_data(buffer), len(buffer)); err == nil {
-                    s.file_drop_callback(utf8_str)
-    			}
-			}
-		}
-
-        win32.DragFinish(drop)
 	}
 
 	return win32.DefWindowProcW(hwnd, msg, wparam, lparam)
@@ -617,6 +600,10 @@ key_from_event_params :: proc(wparam: win32.WPARAM, lparam: win32.LPARAM) -> Key
 		if win32.HIWORD(lparam) & win32.KF_EXTENDED != 0 {
 			return .NP_Enter
 		}
+	}
+
+	if wparam >= len(WIN32_VK_MAP) {
+		return .None
 	}
 
 	return WIN32_VK_MAP[wparam]
