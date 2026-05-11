@@ -13,8 +13,8 @@ main :: proc() {
 
     docs, _ := os.user_documents_dir(context.allocator)
     save_path, _ := os.join_path({docs, "whiteboard.bin"}, context.allocator)
-    load_whiteboard(save_path)
-    defer save_whiteboard(save_path)
+    load(save_path, &camera, &brush_thickness, &brush_color, &shapes)
+    defer save(save_path, camera, brush_thickness, brush_color, shapes)
 
     for k2.update() {
         update_camera()
