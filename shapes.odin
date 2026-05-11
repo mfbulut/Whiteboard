@@ -91,7 +91,7 @@ update_brush :: proc() {
 }
 
 update_stroke :: proc(button: k2.Mouse_Button, thickness: f64, color: k2.Color) {
-    mouse_pos := to_64(k2.get_mouse_position())
+    mouse_pos := Vec2(k2.get_mouse_position())
     mouse_world_pos := screen_to_world(mouse_pos)
     stable_world_pos := update_stabilizer(mouse_world_pos)
 
@@ -180,7 +180,7 @@ draw_shapes :: proc() {
         switch shape.type {
             case .NORMAL: {
                 points := screen_to_world(shape.points[:])
-                k2.draw_path(points[:], f32(thickness), shape.color, segments)
+                draw_path(points[:], f32(thickness), shape.color, segments)
             }
             case .LINE, .RECT: {
                 n := len(shape.points)
@@ -236,3 +236,39 @@ draw_shapes :: proc() {
     }
 }
 
+draw_path :: proc(points: []k2.Vec2, radius: f32, color: k2.Color, segments := 16) {
+    points_len := len(points)
+    if points_len < 2 {
+        if points_len == 1 do k2.draw_circle(points[0], radius, color, segments)
+        return
+    }
+
+    miter :: proc(a, b: k2.Vec2, radius: f32) -> (k2.Vec2, k2.Vec2) {
+        n := linalg.normalize(b - a)
+        perp := k2.Vec2{-n.y, n.x} * radius
+        return a + perp, a - perp
+    }
+
+    prev_m0, prev_m1 := miter(points[0], points[1], radius)
+
+    for i in 1 ..< points_len {
+        next := points[min(i + 1, points_len - 1)]
+        curr_m0, curr_m1 := miter(points[i], next, radius)
+
+        if i == points_len - 1 {
+            curr_m0, curr_m1 = miter(points[i - 1], points[i], radius)
+            n := linalg.normalize(points[i] - points[i-1])
+            perp := k2.Vec2{-n.y, n.x} * radius
+            curr_m0 = points[i] + perp
+            curr_m1 = points[i] - perp
+        }
+
+        k2.draw_triangle({prev_m0, prev_m1, curr_m0}, color)
+        k2.draw_triangle({prev_m1, curr_m1, curr_m0}, color)
+
+        prev_m0, prev_m1 = curr_m0, curr_m1
+    }
+
+    k2.draw_circle(points[0], radius, color, segments)
+    k2.draw_circle(points[points_len - 1], radius, color, segments)
+}

@@ -14,6 +14,7 @@ main :: proc() {
     docs, _ := os.user_documents_dir(context.allocator)
     save_path, _ := os.join_path({docs, "whiteboard.bin"}, context.allocator)
     load_whiteboard(save_path)
+    defer save_whiteboard(save_path)
 
     for k2.update() {
         update_camera()
@@ -36,6 +37,4 @@ main :: proc() {
 
         k2.present()
     }
-
-    save_whiteboard(save_path)
 }
