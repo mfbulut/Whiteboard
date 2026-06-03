@@ -9,7 +9,7 @@ BACKGROUND_COLOR :: k2.Color{22, 29, 50, 255}
 
 main :: proc() {
     k2.init(1280, 720, "Whiteboard", { anti_alias = true, window_mode = .Windowed_Resizable})
-    k2.set_cursor_visible(false)
+    k2.set_cursor_hidden(false)
 
     docs, _ := os.user_documents_dir(context.allocator)
     save_path, _ := os.join_path({docs, "whiteboard.bin"}, context.allocator)

@@ -57,7 +57,7 @@ update_brush :: proc() {
     if k2.key_went_down(.N6) do brush_color = k2.Color{255, 200, 50, 255}
     if k2.key_went_down(.N7) do brush_color = k2.Color{220, 50, 200, 255}
 
-    if k2.key_is_held(.Left_Control) {
+    if k2.key_is_held(.Left_Control) || k2.key_is_held(.Left_Shift) || k2.key_is_held(.G) {
         brush_thickness = max(brush_thickness + f64(k2.get_mouse_wheel_delta()), 1)
     }
 
@@ -142,20 +142,25 @@ update_stroke :: proc(button: k2.Mouse_Button, thickness: f64, color: k2.Color) 
                 } else {
                     append(&shape.points, stable_world_pos)
                 }
-                shape.aabb_min = linalg.min(shape.aabb_min, stable_world_pos)
-                shape.aabb_max = linalg.max(shape.aabb_max, stable_world_pos)
+                shape.aabb_min  = linalg.min(shape.aabb_min, stable_world_pos)
+                shape.aabb_max  = linalg.max(shape.aabb_max, stable_world_pos)
+                shape.thickness = thickness
             }
             case .LINE, .GRID: {
                 shape.points[1] = mouse_world_pos
-                shape.aabb_min = linalg.min(shape.points[0], mouse_world_pos)
-                shape.aabb_max = linalg.max(shape.points[0], mouse_world_pos)
+                shape.aabb_min  = linalg.min(shape.points[0], mouse_world_pos)
+                shape.aabb_max  = linalg.max(shape.points[0], mouse_world_pos)
+                shape.thickness = thickness
+                shape.color     = brush_color
             }
             case .RECT: {
                 shape.points[1] = Vec2{mouse_world_pos.x, shape.points[0].y}
                 shape.points[2] = mouse_world_pos
                 shape.points[3] = Vec2{shape.points[0].x, mouse_world_pos.y}
-                shape.aabb_min = linalg.min(shape.points[0], mouse_world_pos)
-                shape.aabb_max = linalg.max(shape.points[0], mouse_world_pos)
+                shape.aabb_min  = linalg.min(shape.points[0], mouse_world_pos)
+                shape.aabb_max  = linalg.max(shape.points[0], mouse_world_pos)
+                shape.thickness = thickness
+                shape.color     = brush_color
             }
         }
     }
@@ -179,7 +184,12 @@ draw_shapes :: proc() {
 
         switch shape.type {
             case .NORMAL: {
-                points := screen_to_world(shape.points[:])
+                points := make([]k2.Vec2, len(shape.points), context.temp_allocator)
+
+                for &p, i in points {
+                    p = world_to_screen(shape.points[i])
+                }
+
                 draw_path(points[:], f32(thickness), shape.color, segments)
             }
             case .LINE, .RECT: {
@@ -227,7 +237,6 @@ draw_shapes :: proc() {
                     b := world_to_screen(Vec2{grid_max.x, y})
                     k2.draw_line(a, b, f32(thickness) * 2, shape.color)
                 }
-
 
                 k2.draw_circle(world_to_screen(min_p), f32(thickness), shape.color, segments)
                 k2.draw_circle(world_to_screen(min_p), f32(thickness), shape.color, segments)
