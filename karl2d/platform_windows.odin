@@ -53,7 +53,7 @@ windows_init :: proc(
 	s.allocator = allocator
 	s.events = make([dynamic]Event, allocator = allocator)
 	s.custom_context = context
-	
+
 	win32.SetProcessDpiAwarenessContext(win32.DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)
 	win32.SetProcessDPIAware()
 	CLASS_NAME :: "karl2d"
@@ -106,8 +106,15 @@ windows_init :: proc(
 
 	assert(s.hwnd != nil, "Failed creating window")
 
+	value: win32.BOOL = true
+	win32.DwmSetWindowAttribute(s.hwnd,
+		u32(win32.DWMWINDOWATTRIBUTE.DWMWA_USE_IMMERSIVE_DARK_MODE),
+		&value,
+		size_of(value)
+	)
+
 	windows_set_window_mode(options.window_mode)
-	
+
 	win32.XInputEnable(true)
 
 	when RENDER_BACKEND_NAME == "d3d11" {
@@ -167,7 +174,7 @@ windows_get_events :: proc(events: ^[dynamic]Event) {
 			case .RSHOULDER: button = .Right_Shoulder
 
 			case .BACK: button = .Middle_Face_Left
-			
+
 			// Not sure you can get the "middle button" with XInput (the one that goes to dashboard)
 
 			case .START: button = .Middle_Face_Right
@@ -500,7 +507,7 @@ windows_set_cursor_locked :: proc(locked: bool) {
 		win32.ClientToScreen(s.hwnd, &br)
 		clip := win32.RECT{tl.x, tl.y, br.x, br.y}
 		win32.ClipCursor(&clip)
-		
+
 		_windows_teleport_cursor_to_center()
 	} else {
 		win32.ClipCursor(nil)
@@ -819,7 +826,7 @@ WIN32_VK_MAP := [255]Keyboard_Key {
 	win32.VK_NUMPAD7 = .NP_7,
 	win32.VK_NUMPAD8 = .NP_8,
 	win32.VK_NUMPAD9 = .NP_9,
-	
+
 	win32.VK_DECIMAL = .NP_Decimal,
 	win32.VK_DIVIDE  = .NP_Divide,
 	win32.VK_MULTIPLY = .NP_Multiply,
